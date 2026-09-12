@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyEQ // 房间中低频驻波探查与哈曼走向模拟工具</title>
+    <style>
+        :root {
+            --bg-canvas: #0a0a0a;
+            --surface-ground: #121212;
+            --surface-card: #181818;
+            --surface-elevated: #222222;
+            --surface-hover: #2b2b2b;
+            
+            --border-subtle: #242424;
+            --border-medium: #333333;
+            --border-highlight: #4a4a4a;
+            
+            --text-heading: #ffffff;
+            --text-body: #d4d4d4;
+            --text-muted: #888888;
+            --text-dim: #555555;
+            
+            --accent-green: #22c55e;
+            --accent-blue: #3b82f6;
+            --accent-blue-hover: #60a5fa;
+            --accent-danger: #ef4444;
+            --accent-danger-bg: rgba(239, 68, 68, 0.12);
+
+            --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            --font-mono: "Cascadia Code", "Fira Code", Consolas, Monaco, monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-canvas);
+            background-image: 
+                radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.04) 0%, transparent 70%),
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 100% 100%, 40px 40px, 40px 40px;
+            color: var(--text-body);
+            font-family: var(--font-sans);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 40px 16px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #animeLoaderOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #060709;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(34, 197, 94, 0.05) 0%, transparent 60%),
+                repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 2px, transparent 2px, transparent 10px);
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px;
+            box-sizing: border-box;
+            user-select: none;
+            transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+        }
+
+        #animeLoaderOverlay.loader-hidden {
+            opacity: 0;
+            transform: scale(1.02);
+            pointer-events: none;
+        }
+
+        .loader-scanline {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, transparent 50%, rgba(0, 0, 0, 0.4) 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .loader-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            z-index: 2;
+        }
+
+        .loader-title-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .loader-brand-sub {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--accent-green);
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .loader-brand-sub::before {
+            content: "";
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        .loader-main-title {
+            font-size: 26px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            color: #ffffff;
+            text-transform: uppercase;
+        }
+
+        .loader-sys-info {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-muted);
+            text-align: right;
+            line-height: 1.5;
+            letter-spacing: 0.1em;
+        }
+
+        .loader-sys-info .status-online {
+            color: var(--accent-green);
+            font-weight: bold;
+        }
+
+        .loader-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        .loader-status-text {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 12px;
+            font-family: var(--font-mono);
+        }
+
+        .loader-task-info {
+            font-size: 12px;
+            color: var(--text-body);
+            letter-spacing: 0.08em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .loader-task-spinner {
+            width: 9px;
+            height: 9px;
+            border: 2px solid var(--accent-green);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: loaderSpin 0.8s linear infinite;
+        }
+
+        @keyframes loaderSpin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loader-percentage {
+            font-size: 38px;
+            font-weight: 900;
+            color: #ffffff;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .loader-percentage span {
+            font-size: 18px;
+            color: var(--accent-green);
+            margin-left: 2px;
+        }
+
+        .loader-bar-outer {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 2px;
+            position: relative;
+            padding: 1px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .loader-bar-inner {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #16a34a, #22c55e, #86efac);
+            border-radius: 1px;
+            box-shadow: 0 0 12px rgba(34, 197, 94, 0.6);
+            position: relative;
+        }
+
+        .loader-bar-inner::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 10px;
+            height: 100%;
+            background: #ffffff;
+            box-shadow: 0 0 8px #ffffff;
+        }
+
+        .loader-sub-bar-ticks {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            margin-top: 6px;
+        }
+
+        .loader-sub-bar-ticks span {
+            width: 2px;
+            height: 4px;
+            background-color: var(--border-medium);
+        }
+
+        .loader-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 0.15em;
+            z-index: 2;
+        }
+
+        .loader-copyright {
+            text-transform: uppercase;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 880px;
+            background: var(--surface-ground);
+            padding: 38px 36px 42px 36px;
+            border-radius: 16px;
+            box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.85);
+            border: 1px solid var(--border-medium);
+            position: relative;
+            z-index: 1;
+        }
+
+        .top-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .brand-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            color: var(--text-heading);
+            text-transform: uppercase;
+        }
+        .brand-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: #ffffff;
+            color: #000000;
+            border-radius: 4px;
+            font-weight: 900;
+            font-size: 12px;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 14px;
+            background: var(--surface-card);
+            border: 1px solid var(--border-medium);
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+        .badge-dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        .hero-section {
+            margin-bottom: 26px;
+        }
+        h2 { 
+            font-size: clamp(40px, 6.5vw, 60px); 
+            font-weight: 900; 
+            letter-spacing: -0.04em;
+            color: var(--text-heading); 
+            line-height: 1.05;
+            margin-bottom: 8px;
+        }
+        .hero-subtitle {
+            font-size: 15px;
+            font-weight: 400;
+            color: var(--text-muted);
+            letter-spacing: 0.02em;
+            margin-bottom: 16px;
+        }
+
+        .tips { 
+            font-size: 12px; 
+            font-weight: 400;
+            color: var(--text-muted); 
+            line-height: 1.7;
+            background: var(--surface-card);
+            padding: 14px 18px;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+        }
+        .highlight { 
+            color: #d1d5db; 
+            font-weight: 400;
+            display: inline-block;
+            margin-top: 6px;
+        }
+
+        .action-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        button, select {
+            background-color: var(--surface-card);
+            color: var(--text-heading);
+            border: 1px solid var(--border-medium);
+            padding: 10px 18px;
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        button:hover, select:hover { 
+            background-color: var(--surface-elevated);
+            border-color: var(--border-highlight);
+            transform: translateY(-1px);
+        }
+
+        #startBtn { 
+            background-color: #ffffff; 
+            color: #000000; 
+            border: 1px solid #ffffff;
+            font-weight: 700;
+        }
+        #startBtn:hover { 
+            background-color: #e5e5e5; 
+            box-shadow: 0 4px 16px rgba(255, 255, 255, 0.15);
+        }
+
+        #clearBtn {
+            background-color: var(--accent-danger-bg) !important;
+            color: var(--accent-danger) !important;
+            border: 1px solid rgba(239, 68, 68, 0.3) !important;
+        }
+        #clearBtn:hover {
+            background-color: rgba(239, 68, 68, 0.2) !important;
+            border-color: rgba(239, 68, 68, 0.5) !important;
+        }
+
+        #exportBtn { 
+            background-color: var(--accent-blue); 
+            color: #000000; 
+            border: 1px solid var(--accent-blue); 
+            font-weight: 700;
+            box-shadow: 0 0 14px rgba(59, 130, 246, 0.3);
+        }
+        #exportBtn:hover {
+            background-color: var(--accent-blue-hover);
+            border-color: var(--accent-blue-hover);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+        }
+
+        select {
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            padding-right: 36px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box { 
+            display: flex; 
+            flex-direction: column; 
+            background: var(--surface-card);
+            border: 1px solid var(--border-medium);
+            border-radius: 10px;
+            padding: 16px 20px;
+            transition: border-color 0.2s;
+        }
+        .stat-box:hover {
+            border-color: var(--border-highlight);
+        }
+
+        .stat-label { 
+            font-size: 11px; 
+            font-weight: 500;
+            color: var(--text-muted); 
+            margin-bottom: 6px; 
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+
+        .stat-val { 
+            font-size: 26px; 
+            font-weight: 800; 
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+            color: var(--text-heading);
+        }
+        #trackFreq { color: #ffffff; }
+        #trackDb { color: var(--accent-green); }
+
+        .canvas-wrap {
+            position: relative;
+            width: 100%;
+            height: 380px;
+            background: #111111;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border-medium);
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        #exportModal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 10, 10, 0.94);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 50px 20px;
+            overflow-y: auto;
+        }
+        .modal-tips {
+            color: var(--text-heading);
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 24px;
+            text-align: center;
+            line-height: 1.5;
+            flex-shrink: 0;
+        }
+        .img-title {
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin: 20px 0 10px 0;
+            width: 100%;
+            max-width: 800px;
+        }
+        .export-img {
+            width: 100%;
+            max-width: 800px;
+            height: auto;
+            border: 1px solid var(--border-highlight);
+            border-radius: 10px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+            margin-bottom: 15px;
+            user-select: none;
+        }
+        .modal-disclaimer {
+            max-width: 800px;
+            font-size: 11px;
+            color: var(--text-dim);
+            line-height: 1.5;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            margin-bottom: 60px;
+            flex-wrap: wrap;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .dl-btn { 
+            background-color: #ffffff; 
+            color: #000000; 
+            border: none; 
+            font-weight: 700;
+        }
+        .dl-btn:hover { background-color: #e5e5e5; }
+        #closeModalBtn { 
+            background-color: var(--surface-card); 
+            color: var(--text-body); 
+            border: 1px solid var(--border-medium); 
+        }
+        #closeModalBtn:hover { 
+            background-color: var(--surface-elevated); 
+            color: var(--text-heading); 
+        }
+    </style>
+</head>
+<body>
+
+<div id="animeLoaderOverlay">
+    <div class="loader-scanline"></div>
+    <div class="loader-header">
+        <div class="loader-title-group">
+            <div class="loader-brand-sub" id="loaderSubBrand">ACOUSTIC LAB // ENGINE</div>
+            <div class="loader-main-title" id="loaderMainTitle">ROOM EQUALIZER TERMINAL</div>
+        </div>
+        <div class="loader-sys-info">
+            SECURITY LEVEL: CONFIDENTIAL<br>
+            STATUS: <span class="status-online">PROCESSING</span>
+        </div>
+    </div>
+
+    <div class="loader-center">
+        <div class="loader-status-text">
+            <div class="loader-task-info">
+                <div class="loader-task-spinner"></div>
+                <span id="loaderStageText">正在初始化系统...</span>
+            </div>
+            <div class="loader-percentage" id="loaderPercent">0<span>%</span></div>
+        </div>
+        <div class="loader-bar-outer">
+            <div class="loader-bar-inner" id="loaderBar"></div>
+        </div>
+        <div class="loader-sub-bar-ticks">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+        </div>
+    </div>
+
+    <div class="loader-footer">
+        <div class="loader-copyright">ZTXX ACOUSTICS © 2026 / ALL RIGHTS RESERVED.</div>
+        <div>MEM: OK // FFT: 16384 BINS</div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="top-nav">
+        <div class="brand-box">
+            <span class="brand-icon">EQ</span>
+            <span>Acoustic Lab</span>
+        </div>
+        <div class="hero-badge">
+            <span class="badge-dot"></span>
+            HARMAN-LIKE TILT // 10-BAND PEQ
+        </div>
+    </div>
+
+    <div class="hero-section">
+        <h2>ZTXX EasyEQ</h2>
+        <div class="hero-subtitle">基于手机麦克风的 50Hz-500Hz 房间模态粗测与趋势校准</div>
+        <div class="tips">
+            测试方式：播放我们视频结尾处的 50Hz-500Hz测试音频，运用手机支架将底部麦克风<span class="highlight">平直朝向音箱连线中点</span>并保持静止<br>
+            <span class="highlight">安全提示：务必使音响以中等音量播放，保持曲线绘制在-30dB上下，避免手机麦克风削顶失真，以及音响过载损坏；手机麦克风精度有限，测试结果仅代表当前单点位置的相对模态分布</span>
+        </div>
+    </div>
+
+    <div class="action-bar">
+        <button id="startBtn">开始测试</button>
+        <button id="clearBtn">清除数据</button>
+        <select id="smoothingSelect">
+            <option value="0">无平滑 (Raw)</option>
+            <option value="24">1/24 倍频程</option>
+            <option value="12" selected>1/12 倍频程 (推荐)</option>
+            <option value="6">1/6 倍频程</option>
+        </select>
+        <button id="exportBtn">生成房间模态分析曲线与参考校准参数</button>
+    </div>
+
+    <div class="dashboard">
+        <div class="stat-box">
+            <span class="stat-label">TRACK 01 // FREQUENCY</span>
+            <span class="stat-val" id="trackFreq">-- Hz</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-label">TRACK 02 // PEAK LEVEL</span>
+            <span class="stat-val" id="trackDb">-- dB</span>
+        </div>
+    </div>
+
+    <div class="canvas-wrap">
+        <canvas id="fftCanvas"></canvas>
+    </div>
+</div>
+
+<div id="exportModal">
+    <div class="modal-tips">
+        50Hz - 500Hz 房间声学初步校准已完成<br>
+        <span style="font-size: 13px; color: var(--text-muted); font-weight: normal;">(两张高清图像已生成，包含 10 段搁架式与削峰滤波参数)</span>
+    </div>
+    
+    <div class="img-title">TRACK 01 // 频响曲线、哈曼基准与预测响应</div>
+    <img id="exportImgFR" class="export-img" src="" alt="频响曲线">
+    
+    <div class="img-title">TRACK 02 // 10段混合Auto-EQ参数表</div>
+    <img id="exportImgEQ" class="export-img" src="" alt="Auto-EQ参数表">
+    <div class="modal-disclaimer">* 声明：本系统采用残差能量逆滤波与解耦式搁架算法抑制相对驻波，上述参数仅作为初步参考，可结合实际听感微调。</div>
+    
+    <div class="modal-actions">
+        <button id="dlFrBtn" class="dl-btn">下载频响图</button>
+        <button id="dlEqBtn" class="dl-btn">下载 Auto-EQ 参数表</button>
+        <button id="closeModalBtn">关闭预览 (会保留当前数据，安心退出)</button>
+    </div>
+</div>
+
+<script>
+    const loaderOverlay = document.getElementById('animeLoaderOverlay');
+    const loaderBar = document.getElementById('loaderBar');
+    const loaderPercent = document.getElementById('loaderPercent');
+    const loaderStageText = document.getElementById('loaderStageText');
+    const loaderMainTitle = document.getElementById('loaderMainTitle');
+
+    function runAnimeProgress(stages, totalDuration, onComplete) {
+        loaderBar.style.width = '0%';
+        loaderPercent.innerHTML = `0<span>%</span>`;
+        
+        loaderOverlay.style.display = 'flex';
+        loaderOverlay.offsetHeight; 
+        loaderOverlay.classList.remove('loader-hidden');
+        
+        let currentPercent = 0;
+        let stageIdx = 0;
+
+        function step() {
+            if (stageIdx >= stages.length) return;
+            const target = stages[stageIdx];
+            loaderStageText.textContent = target.text;
+
+            const startPercent = currentPercent;
+            const percentGap = target.progress - startPercent;
+            const stageDuration = totalDuration * target.weight;
+            const startTime = performance.now();
+
+            function update(now) {
+                const elapsed = now - startTime;
+                const ratio = Math.min(elapsed / stageDuration, 1);
+
+                currentPercent = Math.floor(startPercent + percentGap * ratio);
+                loaderBar.style.width = currentPercent + '%';
+                loaderPercent.innerHTML = `${currentPercent}<span>%</span>`;
+
+                if (ratio < 1) {
+                    requestAnimationFrame(update);
+                } else {
+                    stageIdx++;
+                    if (stageIdx < stages.length) {
+                        step();
+                    } else {
+                        if (onComplete) {
+                            onComplete(() => {
+                                loaderOverlay.classList.add('loader-hidden');
+                                setTimeout(() => {
+                                    loaderOverlay.style.display = 'none';
+                                }, 400);
+                            });
+                        } else {
+                            setTimeout(() => {
+                                loaderOverlay.classList.add('loader-hidden');
+                                setTimeout(() => {
+                                    loaderOverlay.style.display = 'none';
+                                }, 400);
+                            }, 250);
+                        }
+                    }
+                }
+            }
+            requestAnimationFrame(update);
+        }
+        step();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const initStages = [
+            { progress: 25, text: "正在初始化 Web Audio 采样架构...", weight: 0.25 },
+            { progress: 55, text: "正在装载 16384-Point FFT 频域内核...", weight: 0.3 },
+            { progress: 85, text: "正在校准 Harman Reference 声学基准...", weight: 0.25 },
+            { progress: 100, text: "系统自检就绪，载入操作终端", weight: 0.2 }
+        ];
+        runAnimeProgress(initStages, 2400);
+    });
+
+    let audioCtx, micStream, analyserNode;
+    let isRunning = false;
+    
+    const fMin = 50;
+    const fMax = 500;
+    const dbTop = 0;
+    const dbBottom = -60;
+    const dbSpan = dbTop - dbBottom;
+    
+    let freqBuckets = new Float32Array(fMax - fMin + 1).fill(-150);
+    
+    const canvas = document.getElementById('fftCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const startBtn = document.getElementById('startBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const smoothingSelect = document.getElementById('smoothingSelect');
+    const trackFreqDisplay = document.getElementById('trackFreq');
+    const trackDbDisplay = document.getElementById('trackDb');
+    
+    const exportModal = document.getElementById('exportModal');
+    const exportImgFR = document.getElementById('exportImgFR');
+    const exportImgEQ = document.getElementById('exportImgEQ');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const dlFrBtn = document.getElementById('dlFrBtn');
+    const dlEqBtn = document.getElementById('dlEqBtn');
+    
+    let frBlobUrl = null; 
+    let eqBlobUrl = null; 
+
+    const FONT_SANS = '"Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+
+    function getLogX(f, width) {
+        return (Math.log10(f) - Math.log10(fMin)) / (Math.log10(fMax) - Math.log10(fMin)) * width;
+    }
+
+    function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.parentElement.clientWidth * dpr;
+        canvas.height = canvas.parentElement.clientHeight * dpr;
+        ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function getInterpolatedData() {
+        const data = freqBuckets.slice();
+        let firstValid = -1, lastValid = -1;
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] > -150) {
+                if (firstValid === -1) firstValid = i;
+                lastValid = i;
+            }
+        }
+        if (firstValid === -1) return data;
+
+        for (let i = 0; i < firstValid; i++) data[i] = data[firstValid];
+        for (let i = lastValid + 1; i < data.length; i++) data[i] = data[lastValid];
+
+        let lastIdx = firstValid;
+        for (let i = firstValid + 1; i <= lastValid; i++) {
+            if (data[i] > -150) {
+                if (i - lastIdx > 1) {
+                    const v0 = data[lastIdx], v1 = data[i];
+                    for (let j = lastIdx + 1; j < i; j++) {
+                        data[j] = v0 + (v1 - v0) * ((j - lastIdx) / (i - lastIdx));
+                    }
+                }
+                lastIdx = i;
+            }
+        }
+        return data;
+    }
+
+    function getSmoothedData(smoothingFactor) {
+        const data = getInterpolatedData();
+        if (smoothingFactor === 0) return data;
+        const result = new Float32Array(data.length).fill(-150);
+        const factor = Math.pow(2, 1 / (2 * smoothingFactor));
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] <= -150) continue;
+            const f = i + fMin;
+            const fLow = f / factor;
+            const fHigh = f * factor;
+            const iLow = Math.max(0, Math.round(fLow) - fMin);
+            const iHigh = Math.min(data.length - 1, Math.round(fHigh) - fMin);
+            let sum = 0, count = 0;
+            for (let j = iLow; j <= iHigh; j++) {
+                if (data[j] > -150) { sum += data[j]; count++; }
+            }
+            result[i] = count > 0 ? sum / count : -150;
+        }
+        return result;
+    }
+
+    function calculateAutoEQ() {
+        const smoothed = getSmoothedData(12);
+
+        let midSum = 0, midCount = 0;
+        for (let f = 300; f <= 500; f++) {
+            const val = smoothed[f - fMin];
+            if (val > -120) { midSum += val; midCount++; }
+        }
+        const midBaseline = midCount > 0 ? (midSum / midCount) : -40;
+
+        const harmanSlope = 3.5; 
+        function getTargetDb(f) {
+            const ratio = (Math.log10(fMax) - Math.log10(f)) / (Math.log10(fMax) - Math.log10(fMin));
+            return midBaseline + harmanSlope * ratio;
+        }
+
+        // 避开 90Hz 以下手机麦克风低切滚降陷阱，确保 Low Shelf 不被假深谷绑架
+        let lowErrSum = 0, lowCount = 0;
+        for (let f = 90; f <= 180; f++) {
+            const val = smoothed[f - fMin];
+            if (val > -120) { 
+                lowErrSum += (val - getTargetDb(f)); 
+                lowCount++; 
+            }
+        }
+        let lowMacroErr = lowCount > 0 ? (lowErrSum / lowCount) : 0;
+        
+        let lsGain = 0;
+        if (Math.abs(lowMacroErr) >= 0.8) {
+            lsGain = -lowMacroErr * 0.6;
+            lsGain = Math.min(2.0, Math.max(-6.0, lsGain));
+        }
+
+        let highErrSum = 0, highCount = 0;
+        for (let f = 320; f <= 480; f++) {
+            const val = smoothed[f - fMin];
+            if (val > -120) { highErrSum += (val - getTargetDb(f)); highCount++; }
+        }
+        let highMacroErr = highCount > 0 ? (highErrSum / highCount) : 0;
+        let hsGain = 0;
+        if (Math.abs(highMacroErr) >= 1.0) {
+            hsGain = -Math.min(4.0, Math.max(-3.0, highMacroErr * 0.7));
+        }
+
+        const shelfFilters = [
+            { type: 'Low Shelf', freq: 105.0, gain: lsGain, q: 0.71, label: 'Band 01' },
+            { type: 'High Shelf', freq: 350.0, gain: hsGain, q: 0.71, label: 'Band 02' }
+        ];
+
+        let workingCurve = new Float32Array(smoothed.length);
+        for (let i = 0; i < smoothed.length; i++) {
+            if (smoothed[i] <= -120) {
+                workingCurve[i] = -150;
+                continue;
+            }
+            const f = i + fMin;
+            const lsEffect = lsGain / (1 + Math.pow(f / 105.0, 2));
+            const hsEffect = hsGain / (1 + Math.pow(350.0 / f, 2));
+            workingCurve[i] = smoothed[i] + lsEffect + hsEffect;
+        }
+
+        // 残差循环切削：彻底平整大鼓包与突出驻波
+        let peqBands = [];
+        const maxIter = 8;
+
+        for (let iter = 0; iter < maxIter; iter++) {
+            let maxOverDb = 0;
+            let peakIdx = -1;
+
+            for (let i = 0; i < workingCurve.length; i++) {
+                const f = i + fMin;
+                if (workingCurve[i] <= -120) continue;
+                if (f < 70 || f > 450) continue;
+
+                const over = workingCurve[i] - getTargetDb(f);
+                if (over > maxOverDb) {
+                    maxOverDb = over;
+                    peakIdx = i;
+                }
+            }
+
+            if (maxOverDb < 1.0 || peakIdx === -1) break;
+
+            const peakFreq = peakIdx + fMin;
+
+            const halfDb = workingCurve[peakIdx] - Math.min(3.0, maxOverDb * 0.5);
+            let lIdx = peakIdx;
+            while (lIdx > 0 && workingCurve[lIdx] > halfDb) lIdx--;
+            let rIdx = peakIdx;
+            while (rIdx < workingCurve.length - 1 && workingCurve[rIdx] > halfDb) rIdx++;
+
+            let bw = Math.max((rIdx - lIdx), peakFreq * 0.08);
+            let q = peakFreq / bw;
+            q = Math.max(1.8, Math.min(q, 5.5));
+
+            const cutGain = -Math.min(12.0, maxOverDb * 0.9);
+
+            const newFilter = {
+                type: 'Peak',
+                freq: peakFreq,
+                gain: cutGain,
+                q: q
+            };
+            peqBands.push(newFilter);
+
+            for (let i = 0; i < workingCurve.length; i++) {
+                if (workingCurve[i] <= -120) continue;
+                const f = i + fMin;
+                const w = f / newFilter.freq;
+                const denom = 1 + Math.pow(newFilter.q * (w - 1 / w), 2);
+                workingCurve[i] += newFilter.gain / denom;
+            }
+        }
+
+        peqBands.sort((a, b) => a.freq - b.freq);
+        let final10Bands = [...shelfFilters];
+        peqBands.forEach((p, idx) => {
+            p.label = `Band ${String(idx + 3).padStart(2, '0')}`;
+            final10Bands.push(p);
+        });
+
+        while (final10Bands.length < 10) {
+            final10Bands.push({
+                type: 'Peak',
+                freq: 500.0,
+                gain: 0.0,
+                q: 1.0,
+                label: `Band ${String(final10Bands.length + 1).padStart(2, '0')}`
+            });
+        }
+
+        return {
+            filters: final10Bands,
+            midBaseline: midBaseline,
+            getTargetDb: getTargetDb
+        };
+    }
+
+    function calculatePredictedCurve(originalData, filters) {
+        const predicted = new Float32Array(originalData.length).fill(-150);
+        for (let i = 0; i < originalData.length; i++) {
+            if (originalData[i] > -120) {
+                const f = i + fMin;
+                let totalEq = 0;
+                for (let eq of filters) {
+                    if (eq.gain === 0) continue;
+                    if (eq.type === 'Low Shelf') {
+                        totalEq += eq.gain / (1 + Math.pow(f / eq.freq, 2));
+                    } else if (eq.type === 'High Shelf') {
+                        totalEq += eq.gain / (1 + Math.pow(eq.freq / f, 2));
+                    } else {
+                        const w = f / eq.freq;
+                        const denom = 1 + Math.pow(eq.q * (w - 1 / w), 2);
+                        totalEq += eq.gain / denom;
+                    }
+                }
+                predicted[i] = originalData[i] + totalEq;
+            }
+        }
+        return predicted;
+    }
+
+    startBtn.addEventListener('click', async () => {
+        if (isRunning) return;
+        try {
+            micStream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+                video: false
+            });
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyserNode = audioCtx.createAnalyser();
+            analyserNode.fftSize = 16384; 
+            analyserNode.smoothingTimeConstant = 0.1; 
+            const micSource = audioCtx.createMediaStreamSource(micStream);
+            micSource.connect(analyserNode);
+
+            isRunning = true;
+            startBtn.textContent = "正在采集音频...";
+            startBtn.style.backgroundColor = "#22c55e";
+            startBtn.style.color = "#000000";
+            renderTrackerLoop();
+        } catch (err) {
+            alert('启动失败：请检查麦克风权限。可尝试保存测试页面至本地，再用第三方浏览器打开。\n' + err.message);
+        }
+    });
+
+    clearBtn.addEventListener('click', () => {
+        freqBuckets.fill(-150);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+
+    function renderTrackerLoop() {
+        if (!isRunning) return;
+        requestAnimationFrame(renderTrackerLoop);
+        const w = canvas.parentElement.clientWidth;
+        const h = canvas.parentElement.clientHeight;
+        const dataArray = new Float32Array(analyserNode.frequencyBinCount);
+        analyserNode.getFloatFrequencyData(dataArray);
+
+        const binWidth = audioCtx.sampleRate / analyserNode.fftSize;
+        const iStart = Math.floor(fMin / binWidth);
+        const iEnd = Math.ceil(fMax / binWidth);
+        let maxDb = -150, maxIdx = -1;
+        for (let i = iStart; i <= iEnd; i++) {
+            if (dataArray[i] > maxDb) { maxDb = dataArray[i]; maxIdx = i; }
+        }
+        const dominantFreq = maxIdx * binWidth;
+
+        if (maxDb > -75 && dominantFreq >= fMin && dominantFreq <= fMax) {
+            trackFreqDisplay.textContent = `${dominantFreq.toFixed(1)} Hz`;
+            trackDbDisplay.textContent = `${maxDb.toFixed(1)} dB`;
+            const bucketIdx = Math.round(dominantFreq) - fMin;
+            if (bucketIdx >= 0 && bucketIdx < freqBuckets.length) {
+                freqBuckets[bucketIdx] = Math.max(freqBuckets[bucketIdx], maxDb);
+                if(bucketIdx > 0) freqBuckets[bucketIdx-1] = Math.max(freqBuckets[bucketIdx-1], maxDb);
+                if(bucketIdx < freqBuckets.length - 1) freqBuckets[bucketIdx+1] = Math.max(freqBuckets[bucketIdx+1], maxDb);
+            }
+        } else {
+            trackFreqDisplay.textContent = `-- Hz`;
+            trackDbDisplay.textContent = `-- dB`;
+        }
+
+        const plotLeft = 46;
+        const plotTop = 14;
+        const plotRight = 16;
+        const plotBottom = 26;
+        const plotW = w - plotLeft - plotRight;
+        const plotH = h - plotTop - plotBottom;
+
+        ctx.fillStyle = '#111111';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#171717';
+        ctx.fillRect(plotLeft, plotTop, plotW, plotH);
+
+        ctx.lineWidth = 1;
+        ctx.font = `500 10px ${FONT_SANS}`;
+        for(let db = 0; db >= dbBottom; db -= 10) {
+            const y = plotTop + plotH - ((db - dbBottom) / dbSpan) * plotH;
+            ctx.strokeStyle = '#282828';
+            ctx.beginPath(); ctx.moveTo(plotLeft, y); ctx.lineTo(plotLeft + plotW, y); ctx.stroke();
+            
+            ctx.fillStyle = '#888888';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${db}dB`, plotLeft - 6, y);
+        }
+        
+        const uiTicks = [50, 70, 100, 150, 200, 300, 400, 500];
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        for(let f of uiTicks) {
+            const x = plotLeft + getLogX(f, plotW);
+            ctx.strokeStyle = '#282828';
+            ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, plotTop + plotH); ctx.stroke();
+            
+            ctx.fillStyle = '#888888';
+            ctx.fillText(`${f}Hz`, x, plotTop + plotH + 6);
+        }
+
+        ctx.strokeStyle = '#383838';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(plotLeft, plotTop, plotW, plotH);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(plotLeft, plotTop, plotW, plotH);
+        ctx.clip();
+
+        const smoothedData = getSmoothedData(parseInt(smoothingSelect.value));
+        ctx.beginPath();
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2.5;
+        ctx.lineJoin = 'round';
+        let hasMoved = false;
+        
+        for (let i = 0; i < smoothedData.length; i++) {
+            if (smoothedData[i] > -75) {
+                const f = i + fMin;
+                const x = plotLeft + getLogX(f, plotW);
+                let displayDb = Math.max(smoothedData[i], dbBottom);
+                const y = plotTop + plotH - ((displayDb - dbBottom) / dbSpan) * plotH;
+                if (!hasMoved) { ctx.moveTo(x, y); hasMoved = true; } 
+                else { ctx.lineTo(x, y); }
+            } else {
+                hasMoved = false; 
+            }
+        }
+        ctx.stroke();
+
+        if (maxDb > -75 && dominantFreq >= fMin && dominantFreq <= fMax) {
+            const currX = plotLeft + getLogX(dominantFreq, plotW);
+            const currY = plotTop + plotH - ((Math.max(maxDb, dbBottom) - dbBottom) / dbSpan) * plotH;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(currX, plotTop); ctx.lineTo(currX, plotTop + plotH); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.arc(currX, currY, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+
+    exportBtn.addEventListener('click', () => {
+        exportBtn.disabled = true;
+
+        const calcDuration = Math.floor(Math.random() * 1300) + 3500;
+
+        const calcStages = [
+            { progress: 24, text: "正在解算 Harman Target 房间基准与低频搁架走向...", weight: 0.28 },
+            { progress: 54, text: "正在提取 100Hz-200Hz 宏观残差轮廓...", weight: 0.28 },
+            { progress: 82, text: "正在执行多轮逆滤波切削与 Q 值黄金约束...", weight: 0.26 },
+            { progress: 100, text: "校准参数收敛完毕，正在渲染 5K 频响图表...", weight: 0.18 }
+        ];
+
+        loaderMainTitle.textContent = "CALCULATING AUTO-EQ";
+
+        runAnimeProgress(calcStages, calcDuration, (hideLoader) => {
+            const { filters, getTargetDb } = calculateAutoEQ();
+
+            const frCanvas = document.createElement('canvas');
+            frCanvas.width = 5120;
+            frCanvas.height = 1600;
+            const frCtx = frCanvas.getContext('2d');
+            
+            frCtx.fillStyle = '#111111';
+            frCtx.fillRect(0, 0, frCanvas.width, frCanvas.height);
+            
+            const margin = { top: 160, right: 140, bottom: 150, left: 150 };
+            const plotW = frCanvas.width - margin.left - margin.right;
+            const plotH = frCanvas.height - margin.top - margin.bottom;
+            
+            frCtx.fillStyle = '#ffffff';
+            frCtx.font = `800 56px ${FONT_SANS}`;
+            frCtx.textAlign = 'center';
+            frCtx.fillText('RoomEQ // 房间中低频响应与 Auto-EQ 预测 (Harman Target Baseline)', frCanvas.width / 2, margin.top / 2 + 10);
+            
+            const smoothText = smoothingSelect.options[smoothingSelect.selectedIndex].text;
+            frCtx.font = `500 28px ${FONT_SANS}`;
+            frCtx.fillStyle = '#888888';
+            frCtx.textAlign = 'right';
+            frCtx.fillText(`平滑精度: ${smoothText}`, margin.left + plotW, margin.top - 24);
+            
+            frCtx.fillStyle = '#171717';
+            frCtx.fillRect(margin.left, margin.top, plotW, plotH);
+            frCtx.lineWidth = 2;
+            frCtx.textBaseline = 'middle';
+            
+            for(let db = 0; db >= dbBottom; db -= 5) {
+                const y = margin.top + plotH - ((db - dbBottom) / dbSpan) * plotH;
+                frCtx.strokeStyle = db % 10 === 0 ? '#303030' : '#222222';
+                frCtx.beginPath(); frCtx.moveTo(margin.left, y); frCtx.lineTo(margin.left + plotW, y); frCtx.stroke();
+                frCtx.fillStyle = '#888888';
+                frCtx.font = `500 28px ${FONT_SANS}`;
+                frCtx.textAlign = 'right';
+                frCtx.fillText(`${db} dB`, margin.left - 20, y);
+            }
+            
+            const exportTicks = [50, 60, 70, 80, 90, 100, 120, 150, 180, 200, 250, 300, 350, 400, 450, 500];
+            const labelTicks = [50, 70, 100, 150, 200, 300, 400, 500];
+            frCtx.textAlign = 'center';
+            frCtx.textBaseline = 'top';
+            for(let f of exportTicks) {
+                const x = margin.left + getLogX(f, plotW);
+                frCtx.strokeStyle = [50, 100, 200, 500].includes(f) ? '#383838' : '#222222';
+                frCtx.beginPath(); frCtx.moveTo(x, margin.top); frCtx.lineTo(x, margin.top + plotH); frCtx.stroke();
+                if (labelTicks.includes(f)) {
+                    frCtx.fillStyle = '#888888';
+                    frCtx.font = `500 28px ${FONT_SANS}`;
+                    frCtx.fillText(`${f} Hz`, x, margin.top + plotH + 24);
+                }
+            }
+            
+            frCtx.strokeStyle = '#444444';
+            frCtx.lineWidth = 3;
+            frCtx.strokeRect(margin.left, margin.top, plotW, plotH);
+            
+            const smoothedData = getSmoothedData(parseInt(smoothingSelect.value));
+            
+            frCtx.beginPath();
+            frCtx.strokeStyle = '#9ca3af';
+            frCtx.lineWidth = 4;
+            frCtx.setLineDash([16, 12]);
+            for (let f = fMin; f <= fMax; f++) {
+                const x = margin.left + getLogX(f, plotW);
+                const targetDb = getTargetDb(f);
+                const y = margin.top + plotH - ((Math.max(targetDb, dbBottom) - dbBottom) / dbSpan) * plotH;
+                if (f === fMin) frCtx.moveTo(x, y);
+                else frCtx.lineTo(x, y);
+            }
+            frCtx.stroke();
+            frCtx.setLineDash([]);
+
+            frCtx.beginPath();
+            frCtx.strokeStyle = '#22c55e';
+            frCtx.lineWidth = 8; 
+            frCtx.lineJoin = 'round';
+            frCtx.lineCap = 'round';
+            let hasMoved = false;
+            for (let i = 0; i < smoothedData.length; i++) {
+                if (smoothedData[i] > -75) {
+                    const f = i + fMin;
+                    const x = margin.left + getLogX(f, plotW);
+                    let displayDb = Math.max(smoothedData[i], dbBottom);
+                    const y = margin.top + plotH - ((displayDb - dbBottom) / dbSpan) * plotH;
+                    if (!hasMoved) { frCtx.moveTo(x, y); hasMoved = true; } 
+                    else { frCtx.lineTo(x, y); }
+                } else {
+                    hasMoved = false;
+                }
+            }
+            frCtx.stroke();
+
+            const predictedData = calculatePredictedCurve(smoothedData, filters);
+            frCtx.beginPath();
+            frCtx.strokeStyle = '#ffffff'; 
+            frCtx.lineWidth = 6;
+            frCtx.setLineDash([28, 20]); 
+            let hasMovedPred = false;
+            for (let i = 0; i < predictedData.length; i++) {
+                if (predictedData[i] > -75) {
+                    const f = i + fMin;
+                    const x = margin.left + getLogX(f, plotW);
+                    let displayDb = Math.max(predictedData[i], dbBottom);
+                    const y = margin.top + plotH - ((displayDb - dbBottom) / dbSpan) * plotH;
+                    if (!hasMovedPred) { frCtx.moveTo(x, y); hasMovedPred = true; } 
+                    else { frCtx.lineTo(x, y); }
+                } else {
+                    hasMovedPred = false;
+                }
+            }
+            frCtx.stroke();
+            frCtx.setLineDash([]); 
+
+            frCtx.font = `600 32px ${FONT_SANS}`;
+            frCtx.textAlign = 'left';
+            frCtx.textBaseline = 'middle';
+            
+            frCtx.fillStyle = '#22c55e';
+            frCtx.fillRect(margin.left + 50, margin.top + 50, 50, 8);
+            frCtx.fillStyle = '#ffffff';
+            frCtx.fillText('原始实测响应 (Measured)', margin.left + 120, margin.top + 54);
+
+            frCtx.fillStyle = '#9ca3af';
+            frCtx.fillRect(margin.left + 50, margin.top + 100, 20, 6);
+            frCtx.fillRect(margin.left + 80, margin.top + 100, 20, 6);
+            frCtx.fillStyle = '#ffffff';
+            frCtx.fillText('哈曼参考走向趋势 (Harman-Style Reference Slope)', margin.left + 120, margin.top + 104);
+
+            frCtx.fillStyle = '#ffffff';
+            frCtx.fillRect(margin.left + 50, margin.top + 150, 20, 8);
+            frCtx.fillRect(margin.left + 80, margin.top + 150, 20, 8);
+            frCtx.fillText('10-Band Auto-EQ 预测响应 (Target Corrected)', margin.left + 120, margin.top + 154);
+
+            const eqCanvas = document.createElement('canvas');
+            eqCanvas.width = 2560;
+            const rowHeight = 85;
+            eqCanvas.height = filters.length * rowHeight + 430;
+            const eqCtx = eqCanvas.getContext('2d');
+            
+            eqCtx.fillStyle = '#111111';
+            eqCtx.fillRect(0, 0, eqCanvas.width, eqCanvas.height);
+            
+            eqCtx.fillStyle = '#ffffff';
+            eqCtx.font = `800 50px ${FONT_SANS}`;
+            eqCtx.textAlign = 'center';
+            eqCtx.fillText('10-BAND AUTO-EQ // EQ 参数表 (SHELF + NOTCH)', eqCanvas.width / 2, 110);
+            
+            eqCtx.fillStyle = '#888888';
+            eqCtx.font = `600 26px ${FONT_SANS}`;
+            const col1 = eqCanvas.width * 0.12;
+            const col2 = eqCanvas.width * 0.32;
+            const col3 = eqCanvas.width * 0.54;
+            const col4 = eqCanvas.width * 0.72;
+            const col5 = eqCanvas.width * 0.88;
+            
+            eqCtx.fillText('BAND', col1, 210);
+            eqCtx.fillText('TYPE', col2, 210);
+            eqCtx.fillText('FREQ (HZ)', col3, 210);
+            eqCtx.fillText('GAIN (DB)', col4, 210);
+            eqCtx.fillText('Q (BANDWIDTH)', col5, 210);
+            
+            eqCtx.beginPath();
+            eqCtx.strokeStyle = '#2b2b2b';
+            eqCtx.lineWidth = 2;
+            eqCtx.moveTo(100, 250);
+            eqCtx.lineTo(eqCanvas.width - 100, 250);
+            eqCtx.stroke();
+            
+            eqCtx.font = `700 36px ${FONT_SANS}`;
+            filters.forEach((eq, index) => {
+                const rowY = 325 + index * rowHeight;
+                
+                eqCtx.fillStyle = '#777777';
+                eqCtx.fillText(eq.label, col1, rowY);
+                
+                if (eq.type.includes('Shelf')) {
+                    eqCtx.fillStyle = '#e2e8f0';
+                } else {
+                    eqCtx.fillStyle = '#ffffff';
+                }
+                eqCtx.fillText(eq.type.toUpperCase(), col2, rowY);
+
+                eqCtx.fillStyle = '#ffffff';
+                eqCtx.fillText(`${eq.freq.toFixed(1)} Hz`, col3, rowY);
+                
+                if (eq.gain < 0) eqCtx.fillStyle = '#f87171';
+                else if (eq.gain > 0) eqCtx.fillStyle = '#22c55e';
+                else eqCtx.fillStyle = '#888888';
+                eqCtx.fillText(`${eq.gain > 0 ? '+' : ''}${eq.gain.toFixed(1)} dB`, col4, rowY);
+                
+                eqCtx.fillStyle = '#cccccc';
+                eqCtx.fillText(`${eq.q.toFixed(2)}`, col5, rowY);
+            });
+
+            eqCtx.font = `400 24px ${FONT_SANS}`;
+            eqCtx.fillStyle = '#555555';
+            eqCtx.textAlign = 'center';
+            eqCtx.fillText('* 声明：本系统采用残差能量逆滤波与解耦式搁架算法抑制相对驻波，上述参数仅作为初步参考，可结合实际听感微调。', eqCanvas.width / 2, eqCanvas.height - 45);
+
+            frCanvas.toBlob((blob1) => {
+                if (!blob1) { alert("生成频响图失败"); hideLoader(); return; }
+                if (frBlobUrl) URL.revokeObjectURL(frBlobUrl);
+                frBlobUrl = URL.createObjectURL(blob1);
+                exportImgFR.src = frBlobUrl;
+                
+                eqCanvas.toBlob((blob2) => {
+                    if (!blob2) { alert("生成 EQ 表失败"); hideLoader(); return; }
+                    if (eqBlobUrl) URL.revokeObjectURL(eqBlobUrl);
+                    eqBlobUrl = URL.createObjectURL(blob2);
+                    exportImgEQ.src = eqBlobUrl;
+                    
+                    exportModal.style.display = 'flex';
+                    exportBtn.disabled = false;
+                    
+                    hideLoader();
+                }, 'image/png');
+            }, 'image/png');
+        });
+    });
+
+    dlFrBtn.addEventListener('click', () => {
+        if (!frBlobUrl) return;
+        const a = document.createElement('a');
+        a.href = frBlobUrl;
+        a.download = `FR_Harman_50-500Hz_10Band.png`;
+        a.click();
+    });
+
+    dlEqBtn.addEventListener('click', () => {
+        if (!eqBlobUrl) return;
+        const a = document.createElement('a');
+        a.href = eqBlobUrl;
+        a.download = `10Band_AutoEQ_Parameters.png`;
+        a.click();
+    });
+
+    closeModalBtn.addEventListener('click', () => {
+        exportModal.style.display = 'none';
+        loaderMainTitle.textContent = "ROOM EQUALIZER TERMINAL";
+    });
+</script>
+
+</body>
+</html>
